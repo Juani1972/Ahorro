@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arca — administración</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- Login -->
+  <div v-if="!isAdmin" class="admin-login">
+    <h1>Panel de administración</h1>
+    <form @submit.prevent="login">
+      <input type="password" v-model="password" placeholder="Contraseña" required autofocus>
+      <button class="btn-primary" type="submit" :disabled="loggingIn">
+        {{ loggingIn ? 'Verificando…' : 'Entrar' }}
+      </button>
+    </form>
+  </div>
+
+  <!-- Cambio de contraseña obligatorio (primer acceso) -->
+  <div v-else-if="mustChangePassword" class="admin-login">
+    <h1>Actualiza tu contraseña</h1>
+    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">
+      Por seguridad, cambia la contraseña por defecto antes de continuar.
+    </p>
+    <form @submit.prevent="changePassword">
+      <input type="password" v-model="pwForm.current" placeholder="Contraseña actual (admin1234)" required>
+      <input type="password" v-model="pwForm.next" placeholder="Nueva contraseña (mín. 8 caracteres)" required>
+      <button class="btn-primary" type="submit">Guardar y continuar</button>
+    </form>
+  </div>
+
+  <!-- Panel -->
+  <div v-else>
+    <div class="admin-bar">
+      <h1>Administración</h1>
+      <div style="display:flex; gap:10px;">
+        <a href="index.html" class="btn-secondary" style="text-decoration:none; padding:9px 14px; font-size:13px; border-radius:3px; border:1px solid var(--line); color:var(--text);">Ver web</a>
+        <button class="btn-ghost" @click="logout">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <!-- Bancos -->
+    <section class="ledger-section">
+      <div class="section-head">
+        <h2>Bancos y redirección</h2>
+        <span class="hint">Saldo actual: {{ formatMoney(balanceTotal) }}</span>
+      </div>
+
+      <div class="field-row" v-for="(bank, i) in banks" :key="bank._key">
+        <input type="text" v-model="bank.name" placeholder="Nombre del banco">
+        <input type="url" v-model="bank.url" placeholder="https://…">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="bank.active"> Activo
+        </label>
+        <button class="btn-ghost" @click="banks.splice(i, 1)">Eliminar</button>
+      </div>
+      <button class="add-row-btn" @click="addBank">+ Añadir banco</button>
+
+      <div class="save-bar">
+        <button class="btn-primary" @click="saveBanks" :disabled="savingBanks">
+          {{ savingBanks ? 'Guardando…' : 'Guardar bancos' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- Distribución -->
+    <section class="ledger-section">
+      <div class="section-head">
+        <h2>Distribución automática</h2>
+        <span class="hint">Define cómo se reparte el saldo</span>
+      </div>
+
+      <div class="mode-toggle">
+        <button :class="{active: dist.mode === 'percentage'}" @click="dist.mode = 'percentage'">Porcentaje</button>
+        <button :class="{active: dist.mode === 'fixed'}" @click="dist.mode = 'fixed'">Monto fijo</button>
+      </div>
+
+      <div class="field-row dist-row" v-for="(item, i) in dist.items" :key="item._key">
+        <input type="text" v-model="item.concept" placeholder="Concepto (ej. Servicios)">
+        <input type="number" step="0.01" v-model="item.value" :placeholder="dist.mode === 'percentage' ? '%' : 'Monto'">
+        <button class="btn-ghost" @click="dist.items.splice(i, 1)">Eliminar</button>
+      </div>
+      <button class="add-row-btn" @click="addDistItem">+ Añadir concepto</button>
+
+      <p v-if="dist.mode === 'percentage'" class="empty-note" style="margin-top:10px;">
+        Suma actual de porcentajes: {{ percentSum }}%
+      </p>
+
+      <div class="save-bar">
+        <button class="btn-primary" @click="saveDistribution" :disabled="savingDist">
+          {{ savingDist ? 'Guardando…' : 'Guardar distribución' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- Contraseña -->
+    <section class="ledger-section">
+      <div class="section-head"><h2>Seguridad</h2></div>
+      <form @submit.prevent="changePassword" style="display:flex; gap:10px; flex-wrap:wrap;">
+        <input type="password" v-model="pwForm.current" placeholder="Contraseña actual" required>
+        <input type="password" v-model="pwForm.next" placeholder="Nueva contraseña (mín. 8 caracteres)" required>
+        <button class="btn-secondary" type="submit">Cambiar contraseña</button>
+      </form>
+    </section>
+
+  </div>
+
+  <div v-if="toast.message" class="toast" :class="toast.type">{{ toast.message }}</div>
+
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="assets/js/admin.js"></script>
+</body>
+</html>

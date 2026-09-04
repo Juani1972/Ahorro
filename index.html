@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arca — control de ahorro</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- Login: toda la app vive detrás de un único acceso personal -->
+  <div v-if="!isAuthed" class="admin-login">
+    <h1>Arca</h1>
+    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">Inicia sesión para ver tu ahorro</p>
+    <form @submit.prevent="login">
+      <input type="password" v-model="password" placeholder="Contraseña" required autofocus>
+      <button class="btn-primary" type="submit" :disabled="loggingIn">
+        {{ loggingIn ? 'Verificando…' : 'Entrar' }}
+      </button>
+    </form>
+  </div>
+
+  <!-- Bloqueado hasta cambiar la contraseña por defecto (el backend lo exige, no solo el frontend) -->
+  <div v-else-if="mustChangePassword" class="admin-login">
+    <h1>Actualiza tu contraseña</h1>
+    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">
+      Por seguridad, primero debes cambiar la contraseña por defecto desde el panel de administración.
+    </p>
+    <a href="admin.html" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:14px; padding:11px 18px;">Ir al panel de administración</a>
+  </div>
+
+  <div v-else>
+
+  <header class="masthead">
+    <div>
+      <h1>Arca</h1>
+      <p>control de ahorro</p>
+    </div>
+    <div class="balance-tag">
+      <div class="label">Saldo total</div>
+      <div class="amount">{{ formatMoney(balance.total) }}</div>
+    </div>
+  </header>
+
+  <!-- 1. Simulador -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Ahorro a corto plazo</h2>
+      <span class="hint">Elige un banco para continuar</span>
+    </div>
+
+    <div v-if="banks.length" class="simulator-row">
+      <select v-model="selectedBankId">
+        <option disabled value="">Selecciona un banco</option>
+        <option v-for="b in banks" :key="b.id" :value="b.id">{{ b.name }}</option>
+      </select>
+      <button class="btn-primary" :disabled="!selectedBankId" @click="goToBank">
+        Ir al banco
+      </button>
+    </div>
+    <p v-else class="empty-note">Aún no hay bancos configurados. Añádelos desde el panel de administración.</p>
+  </section>
+
+  <!-- 2. Panel de saldos -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Saldo e ingresos</h2>
+      <span class="hint">Registra cada ahorro manualmente</span>
+    </div>
+
+    <form class="balance-form" @submit.prevent="addBalance">
+      <input type="number" step="0.01" v-model="newEntry.amount" placeholder="Monto (usa negativo para retiros)" required>
+      <input type="text" v-model="newEntry.note" placeholder="Concepto (opcional)" maxlength="200">
+      <button class="btn-primary" type="submit" :disabled="savingEntry">
+        {{ savingEntry ? 'Guardando…' : 'Agregar' }}
+      </button>
+    </form>
+
+    <table class="ledger-table" v-if="balance.history.length">
+      <thead>
+        <tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="entry in balance.history" :key="entry.id">
+          <td>{{ formatDate(entry.date) }}</td>
+          <td>{{ entry.note }}</td>
+          <td class="amount-cell" :class="entry.amount >= 0 ? 'amount-positive' : 'amount-negative'">
+            {{ formatMoney(entry.amount) }}
+          </td>
+          <td>
+            <div class="row-actions">
+              <button class="btn-ghost" @click="removeEntry(entry.id)">Eliminar</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="empty-note">Todavía no registraste ningún movimiento.</p>
+  </section>
+
+  <!-- 3. Distribución -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Distribución del saldo</h2>
+      <span class="hint">{{ distribution.mode === 'percentage' ? 'Por porcentaje' : 'Montos fijos' }}</span>
+    </div>
+
+    <div v-if="distribution.items.length">
+      <div class="dist-item" v-for="item in distribution.items" :key="item.id">
+        <div class="row">
+          <span class="concept">{{ item.concept }}
+            <span class="value">({{ distribution.mode === 'percentage' ? item.value + '%' : formatMoney(item.value) + ' fijo' }})</span>
+          </span>
+          <span class="amount">{{ formatMoney(item.amount) }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" :style="{ width: barWidth(item) + '%' }"></div>
+        </div>
+      </div>
+
+      <div class="dist-summary">
+        <span>Asignado: <strong>{{ formatMoney(distribution.assigned) }}</strong></span>
+        <span>Sin asignar: <strong>{{ formatMoney(distribution.remaining) }}</strong></span>
+      </div>
+    </div>
+    <p v-else class="empty-note">Configura los conceptos de distribución desde el panel de administración.</p>
+  </section>
+
+  <p class="foot-link">
+    <a href="admin.html">Panel de administración</a>
+    &nbsp;·&nbsp;
+    <a href="#" @click.prevent="logout">Cerrar sesión</a>
+  </p>
+
+  </div>
+
+  <div v-if="toast.message" class="toast" :class="toast.type">{{ toast.message }}</div>
+
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

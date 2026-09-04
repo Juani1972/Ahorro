@@ -1,0 +1,28 @@
+{
+  "banks": [
+    {
+      "id": 1,
+      "name": "Banco Ejemplo",
+      "url": "https://www.bancoejemplo.com/ahorro-corto-plazo",
+      "active": true
+    }
+  ],
+  "balance": {
+    "history": [
+      { "id": 1, "date": "2026-09-01", "amount": 150, "note": "Depósito inicial" }
+    ]
+  },
+  "distribution": {
+    "mode": "percentage",
+    "items": [
+      { "id": 1, "concept": "Servicios", "value": 30 },
+      { "id": 2, "concept": "Cuotas", "value": 40 },
+      { "id": 3, "concept": "Metas", "value": 30 }
+    ]
+  },
+  "admin": {
+    "password_hash": "$2b$10$iGfa3AOJ4vnvMIPuZdxwbOH2Lxrez8kalDnUjD.LWNm2FrK9ApTJ6",
+    "must_change_password": true,
+    "security": { "failed_attempts": 0, "locked_until": 0 }
+  }
+}
