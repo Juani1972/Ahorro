@@ -4,19 +4,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arca — control de ahorro</title>
+<meta name="theme-color" content="#0e1b1b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icons/icon.svg">
 <link rel="stylesheet" href="assets/css/style.css">
+<script src="assets/js/theme-init.js"></script>
 </head>
 <body>
 <div id="app" class="app">
 
-  <!-- Login: toda la app vive detrás de un único acceso personal -->
-  <div v-if="!isAuthed" class="admin-login">
+  <!-- Login / Registro: toda la app vive detrás de una cuenta personal -->
+  <div v-if="!isAuthed && !pending2fa" class="admin-login">
     <h1>Arca</h1>
-    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">Inicia sesión para ver tu ahorro</p>
-    <form @submit.prevent="login">
-      <input type="password" v-model="password" placeholder="Contraseña" required autofocus>
-      <button class="btn-primary" type="submit" :disabled="loggingIn">
-        {{ loggingIn ? 'Verificando…' : 'Entrar' }}
+    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">
+      {{ authMode === 'login' ? 'Inicia sesión para ver tu ahorro' : 'Crea tu cuenta gratuita' }}
+    </p>
+    <form v-if="authMode === 'login'" @submit.prevent="login">
+      <input type="text" v-model="authForm.username" placeholder="Usuario" aria-label="Usuario" required autofocus autocomplete="username">
+      <input type="password" v-model="authForm.password" placeholder="Contraseña" aria-label="Contraseña" required autocomplete="current-password">
+      <button class="btn-primary" type="submit" :disabled="authBusy">
+        {{ authBusy ? 'Verificando…' : 'Entrar' }}
+      </button>
+    </form>
+    <form v-else @submit.prevent="register">
+      <input type="text" v-model="authForm.username" placeholder="Elige un usuario" aria-label="Elige un usuario" required autocomplete="username" maxlength="40">
+      <input type="password" v-model="authForm.password" placeholder="Elige una contraseña (mín. 8 caracteres)" aria-label="Elige una contraseña, mínimo 8 caracteres" required autocomplete="new-password">
+      <button class="btn-primary" type="submit" :disabled="authBusy">
+        {{ authBusy ? 'Creando…' : 'Crear cuenta' }}
+      </button>
+    </form>
+    <p class="auth-toggle">
+      <a v-if="authMode === 'login'" @click="authMode = 'register'">¿No tienes cuenta? Regístrate</a>
+      <a v-else @click="authMode = 'login'">¿Ya tienes cuenta? Inicia sesión</a>
+    </p>
+  </div>
+
+  <!-- Segundo factor (2FA), solo si la cuenta lo tiene activado -->
+  <div v-else-if="pending2fa" class="admin-login">
+    <h1>Verificación en dos pasos</h1>
+    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">
+      Introduce el código de 6 dígitos de tu app autenticadora.
+    </p>
+    <form @submit.prevent="verify2fa">
+      <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" v-model="twofaCode" placeholder="000000" aria-label="Código de verificación de 6 dígitos" required autofocus>
+      <button class="btn-primary" type="submit" :disabled="authBusy">
+        {{ authBusy ? 'Verificando…' : 'Verificar' }}
       </button>
     </form>
   </div>
@@ -25,9 +58,9 @@
   <div v-else-if="mustChangePassword" class="admin-login">
     <h1>Actualiza tu contraseña</h1>
     <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">
-      Por seguridad, primero debes cambiar la contraseña por defecto desde el panel de administración.
+      Por seguridad, primero debes cambiar la contraseña por defecto desde tu cuenta.
     </p>
-    <a href="admin.html" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:14px; padding:11px 18px;">Ir al panel de administración</a>
+    <a href="admin.html" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:14px; padding:11px 18px;">Ir a mi cuenta</a>
   </div>
 
   <div v-else>
@@ -35,13 +68,50 @@
   <header class="masthead">
     <div>
       <h1>Arca</h1>
-      <p>control de ahorro</p>
+      <p>{{ username }}</p>
     </div>
-    <div class="balance-tag">
-      <div class="label">Saldo total</div>
-      <div class="amount">{{ formatMoney(balance.total) }}</div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <button class="theme-toggle" @click="toggleNotifications" :title="notificationsEnabled ? 'Desactivar avisos' : 'Avisarme si supero un presupuesto o completo un objetivo'" :aria-label="notificationsEnabled ? 'Desactivar avisos' : 'Activar avisos'">
+        {{ notificationsEnabled ? '🔔' : '🔕' }}
+      </button>
+      <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'" :aria-label="theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'">
+        {{ theme === 'dark' ? '☀' : '☾' }}
+      </button>
+      <div class="balance-tag">
+        <div class="label">Saldo total</div>
+        <div class="amount">{{ formatMoney(balance.total) }}</div>
+      </div>
     </div>
   </header>
+
+  <!-- Estadísticas del mes -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Este mes</h2>
+      <span class="hint">{{ formatMonthLabel(stats.month) }}</span>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Ingresos</div>
+        <div class="stat-value amount-positive">{{ formatMoney(stats.income) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Retiros</div>
+        <div class="stat-value amount-negative">{{ formatMoney(stats.expense) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ahorro neto</div>
+        <div class="stat-value">{{ formatMoney(stats.net) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tasa de ahorro</div>
+        <div class="stat-value">{{ stats.savings_rate }}%</div>
+      </div>
+    </div>
+    <p v-if="stats.change_percent !== null" class="empty-note" style="margin-top:14px;">
+      {{ stats.change_percent >= 0 ? '▲' : '▼' }} {{ Math.abs(stats.change_percent) }}% respecto al mes anterior ({{ formatMoney(stats.previous_month_net) }})
+    </p>
+  </section>
 
   <!-- 1. Simulador -->
   <section class="ledger-section">
@@ -51,7 +121,7 @@
     </div>
 
     <div v-if="banks.length" class="simulator-row">
-      <select v-model="selectedBankId">
+      <select v-model="selectedBankId" aria-label="Selecciona un banco">
         <option disabled value="">Selecciona un banco</option>
         <option v-for="b in banks" :key="b.id" :value="b.id">{{ b.name }}</option>
       </select>
@@ -59,22 +129,30 @@
         Ir al banco
       </button>
     </div>
-    <p v-else class="empty-note">Aún no hay bancos configurados. Añádelos desde el panel de administración.</p>
+    <p v-else class="empty-note">Aún no hay bancos configurados. Añádelos desde tu cuenta.</p>
   </section>
 
   <!-- 2. Panel de saldos -->
   <section class="ledger-section">
     <div class="section-head">
       <h2>Saldo e ingresos</h2>
-      <span class="hint">Registra cada ahorro manualmente</span>
+      <span v-if="editingId" class="hint">Editando movimiento</span>
+      <button v-else-if="balance.history.length" class="btn-ghost" @click="exportCSV" style="padding:4px 0;">Exportar CSV</button>
+      <span v-else class="hint">Registra cada ahorro manualmente</span>
     </div>
 
-    <form class="balance-form" @submit.prevent="addBalance">
-      <input type="number" step="0.01" v-model="newEntry.amount" placeholder="Monto (usa negativo para retiros)" required>
-      <input type="text" v-model="newEntry.note" placeholder="Concepto (opcional)" maxlength="200">
+    <form class="balance-form" @submit.prevent="submitBalance">
+      <input type="number" step="0.01" v-model="newEntry.amount" placeholder="Monto (usa negativo para retiros)" aria-label="Monto del movimiento" required>
+      <input type="text" v-model="newEntry.note" placeholder="Concepto (opcional)" aria-label="Concepto del movimiento" maxlength="200">
+      <input type="date" v-model="newEntry.date" :max="todayStr" aria-label="Fecha del movimiento">
+      <select v-model="newEntry.category_id" aria-label="Categoría del movimiento">
+        <option value="">Sin categoría</option>
+        <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+      </select>
       <button class="btn-primary" type="submit" :disabled="savingEntry">
-        {{ savingEntry ? 'Guardando…' : 'Agregar' }}
+        {{ savingEntry ? 'Guardando…' : (editingId ? 'Guardar cambios' : 'Agregar') }}
       </button>
+      <button v-if="editingId" type="button" class="btn-secondary" @click="cancelEdit">Cancelar</button>
     </form>
 
     <table class="ledger-table" v-if="balance.history.length">
@@ -82,14 +160,18 @@
         <tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="entry in balance.history" :key="entry.id">
+        <tr v-for="entry in balance.history" :key="entry.id" :class="{ 'row-editing': entry.id === editingId }">
           <td>{{ formatDate(entry.date) }}</td>
-          <td>{{ entry.note }}</td>
+          <td>
+            {{ entry.note }}
+            <span v-if="categoryName(entry.category_id)" class="category-tag">{{ categoryName(entry.category_id) }}</span>
+          </td>
           <td class="amount-cell" :class="entry.amount >= 0 ? 'amount-positive' : 'amount-negative'">
             {{ formatMoney(entry.amount) }}
           </td>
           <td>
             <div class="row-actions">
+              <button class="btn-ghost" @click="startEdit(entry)">Editar</button>
               <button class="btn-ghost" @click="removeEntry(entry.id)">Eliminar</button>
             </div>
           </td>
@@ -124,22 +206,83 @@
         <span>Sin asignar: <strong>{{ formatMoney(distribution.remaining) }}</strong></span>
       </div>
     </div>
-    <p v-else class="empty-note">Configura los conceptos de distribución desde el panel de administración.</p>
+    <p v-else class="empty-note">Configura los conceptos de distribución desde tu cuenta.</p>
+  </section>
+
+  <!-- Gráfico de evolución -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Evolución del ahorro</h2>
+      <span class="hint">Saldo acumulado en el tiempo</span>
+    </div>
+    <canvas v-show="balanceSeries.length > 1" ref="balanceCanvas" height="200"></canvas>
+    <p v-if="balanceSeries.length <= 1" class="empty-note">Registra movimientos en distintas fechas para ver la evolución.</p>
+  </section>
+
+  <!-- Objetivos de ahorro -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Objetivos de ahorro</h2>
+      <span class="hint">Independientes del saldo principal</span>
+    </div>
+
+    <div v-if="goals.length" class="goal-list">
+      <div class="goal-card" v-for="g in goals" :key="g.id">
+        <div class="goal-head">
+          <span class="goal-name">{{ g.name }}</span>
+          <span class="goal-amounts">{{ formatMoney(g.saved_amount) }} / {{ formatMoney(g.target_amount) }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" :style="{ width: g.percent + '%' }"></div>
+        </div>
+        <div class="goal-foot">
+          <span class="hint">{{ g.percent }}% · restan {{ formatMoney(g.remaining) }}</span>
+          <div class="goal-contribute">
+            <input type="number" step="0.01" v-model="goalContribution[g.id]" placeholder="Monto" :aria-label="`Monto a añadir al objetivo ${g.name}`">
+            <button class="btn-ghost" @click="contributeToGoal(g.id)">Añadir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p v-else class="empty-note">Configura objetivos desde tu cuenta.</p>
+  </section>
+
+  <!-- Presupuestos mensuales -->
+  <section class="ledger-section">
+    <div class="section-head">
+      <h2>Presupuestos del mes</h2>
+      <span class="hint">Gasto por categoría vs. límite</span>
+    </div>
+
+    <div v-if="budgets.length" class="budget-list">
+      <div class="budget-item" v-for="b in budgets" :key="b.id">
+        <div class="row">
+          <span class="concept">{{ b.category_name }}</span>
+          <span :class="b.over_budget ? 'amount-negative' : 'amount'">{{ formatMoney(b.spent) }} / {{ formatMoney(b.limit_amount) }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" :class="{ 'bar-over': b.over_budget }" :style="{ width: Math.min(b.percent, 100) + '%' }"></div>
+        </div>
+        <p v-if="b.over_budget" class="budget-warning">Superado en {{ formatMoney(b.spent - b.limit_amount) }}</p>
+      </div>
+    </div>
+    <p v-else class="empty-note">Configura presupuestos desde tu cuenta.</p>
   </section>
 
   <p class="foot-link">
-    <a href="admin.html">Panel de administración</a>
+    <a href="admin.html">Mi cuenta</a>
     &nbsp;·&nbsp;
     <a href="#" @click.prevent="logout">Cerrar sesión</a>
   </p>
 
   </div>
 
-  <div v-if="toast.message" class="toast" :class="toast.type">{{ toast.message }}</div>
+  <div v-if="toast.message" class="toast" :class="toast.type" role="status" aria-live="polite">{{ toast.message }}</div>
 
 </div>
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="assets/js/vendor/vue.global.prod.js"></script>
+<script src="assets/js/vendor/chart.umd.min.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
 </html>

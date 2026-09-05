@@ -1,0 +1,19 @@
+{
+  "name": "Arca — control de ahorro",
+  "short_name": "Arca",
+  "description": "Simulador de ahorro, saldo, objetivos y presupuestos personales.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1b1b",
+  "theme_color": "#0e1b1b",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "assets/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

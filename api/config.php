@@ -1,44 +1,43 @@
 <?php
 /**
- * Configuración central de la API.
- * No requiere base de datos: los datos se guardan en api/data/store.json
+ * Configuración central de la API (v2 — SQLite + multiusuario).
  */
 
 declare(strict_types=1);
 
-// --- Sesión (usada para proteger toda la app: index.html y admin.html) ---
+// --- Sesión ---
 if (session_status() === PHP_SESSION_NONE) {
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 
-    ini_set('session.use_strict_mode', '1'); // rechaza IDs de sesión no generados por PHP
+    ini_set('session.use_strict_mode', '1');
     session_set_cookie_params([
-        'lifetime' => 0, // cookie de sesión: expira al cerrar el navegador
+        'lifetime' => 0,
+        'path' => '/',
         'httponly' => true,
         'samesite' => 'Strict',
-        'secure' => $isHttps, // true automáticamente en cuanto sirvas por HTTPS
+        'secure' => $isHttps,
     ]);
     session_start();
 }
 
-const SESSION_MAX_IDLE_SECONDS = 2 * 60 * 60; // 2 horas de inactividad máx.
+const SESSION_MAX_IDLE_SECONDS = 2 * 60 * 60;
 const LOGIN_MAX_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_SECONDS = 5 * 60; // 5 minutos de bloqueo tras agotar intentos
+const LOGIN_LOCKOUT_SECONDS = 5 * 60;
 
-// --- Cabeceras comunes de la API ---
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: strict-origin-when-cross-origin');
-// Si el frontend se sirve desde el mismo dominio (recomendado) no hace falta CORS.
-// Si lo sirves desde otro origen, descomenta y ajusta la siguiente línea:
-// header('Access-Control-Allow-Origin: https://tu-dominio.com');
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
 
-define('DATA_FILE', __DIR__ . '/data/store.json');
+// La ruta de la base de datos se puede sobreescribir con la variable de
+// entorno ARCA_DB_FILE — la usan los tests de integración para trabajar
+// siempre sobre un archivo temporal y no arriesgarse jamás a tocar datos
+// reales de una instalación ya en uso.
+define('DB_FILE', getenv('ARCA_DB_FILE') ?: __DIR__ . '/data/arca.sqlite');
+define('SCHEMA_FILE', __DIR__ . '/data/schema.sql');
 
-/**
- * Envía una respuesta JSON y termina la ejecución.
- */
 function respond($data, int $status = 200): void
 {
     http_response_code($status);
@@ -46,9 +45,6 @@ function respond($data, int $status = 200): void
     exit;
 }
 
-/**
- * Lee el body JSON de la petición actual.
- */
 function readJsonBody(): array
 {
     $raw = file_get_contents('php://input');
@@ -60,12 +56,12 @@ function readJsonBody(): array
 }
 
 /**
- * Comprueba si el usuario tiene sesión activa y no ha expirado por inactividad.
- * Toda la app (lectura y escritura) vive detrás de este único login personal.
+ * Comprueba que hay una sesión de usuario activa y no expirada por inactividad.
+ * Deja el user_id disponible como valor de retorno para comodidad del endpoint.
  */
-function requireAuth(): void
+function requireAuth(): int
 {
-    if (empty($_SESSION['is_admin'])) {
+    if (empty($_SESSION['user_id'])) {
         respond(['error' => 'No autorizado. Inicia sesión primero.'], 401);
     }
 
@@ -77,12 +73,9 @@ function requireAuth(): void
     }
 
     $_SESSION['last_activity'] = time();
+    return (int) $_SESSION['user_id'];
 }
 
-/**
- * Comprueba que la petición incluya un token CSRF válido (cabecera X-CSRF-Token),
- * emitido al iniciar sesión. Debe llamarse siempre después de requireAuth().
- */
 function requireCsrf(): void
 {
     $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
@@ -94,18 +87,21 @@ function requireCsrf(): void
 }
 
 /**
- * Bloquea el uso normal de la app hasta que se haya cambiado la contraseña
- * por defecto. Debe llamarse después de requireAuth() en todos los endpoints
- * salvo admin_login.php y admin_change_password.php.
- *
- * Importante: esta comprobación vive en el backend, no solo en el frontend —
- * el frontend puede guiar al usuario, pero no puede ser la única barrera de seguridad.
+ * Convierte un monto en euros (float o string, admite coma decimal) a
+ * céntimos enteros. Devuelve null si el valor no es numérico.
  */
-function requirePasswordChanged(): void
+function eurosToCents($rawEuros): ?int
 {
-    require_once __DIR__ . '/db.php';
-    $data = loadStore();
-    if (!empty($data['admin']['must_change_password'])) {
-        respond(['error' => 'Debes cambiar la contraseña por defecto antes de continuar.', 'must_change_password' => true], 403);
+    if (is_string($rawEuros)) {
+        $rawEuros = str_replace(',', '.', trim($rawEuros));
     }
+    if (!is_numeric($rawEuros)) {
+        return null;
+    }
+    return (int) round(((float) $rawEuros) * 100);
+}
+
+function centsToEuros(int $cents): float
+{
+    return round($cents / 100, 2);
 }

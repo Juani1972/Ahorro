@@ -7,9 +7,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(['error' => 'Método no permitido.'], 405);
 }
 
-requireAuth();
+$pdo = getPDO();
+$userId = requireAuth();
 requireCsrf();
-requirePasswordChanged();
+requirePasswordChanged($pdo, $userId);
 
 $body = readJsonBody();
 $id = isset($body['id']) ? (int) $body['id'] : null;
@@ -18,22 +19,7 @@ if (!$id) {
     respond(['error' => 'Falta el id del movimiento.'], 422);
 }
 
-$lock = acquireStoreLock();
-$data = loadStore();
+$stmt = $pdo->prepare('DELETE FROM movements WHERE id = ? AND user_id = ?');
+$stmt->execute([$id, $userId]);
 
-$data['balance']['history'] = array_values(array_filter(
-    $data['balance']['history'],
-    fn($entry) => $entry['id'] !== $id
-));
-
-saveStore($data);
-releaseStoreLock($lock);
-
-respond([
-    'ok' => true,
-    'balance' => [
-        'total' => computeTotalBalance($data),
-        'history' => array_reverse($data['balance']['history']),
-    ],
-    'distribution' => computeDistribution($data),
-]);
+respond(['ok' => true, 'deleted' => $stmt->rowCount() > 0]);

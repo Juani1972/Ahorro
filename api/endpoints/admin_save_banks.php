@@ -3,14 +3,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 
-requireAuth();
+$pdo = getPDO();
+$userId = requireAuth();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(['error' => 'Método no permitido.'], 405);
 }
 
 requireCsrf();
-requirePasswordChanged();
+requirePasswordChanged($pdo, $userId);
 
 $body = readJsonBody();
 $banks = $body['banks'] ?? null;
@@ -20,15 +21,6 @@ if (!is_array($banks)) {
 }
 if (count($banks) > 20) {
     respond(['error' => 'No se permiten más de 20 bancos.'], 422);
-}
-
-// Primero determinamos el próximo id libre a partir de los ids existentes,
-// para no chocar con un banco nuevo que aparezca antes en la lista.
-$nextId = 1;
-foreach ($banks as $bank) {
-    if (isset($bank['id']) && (int) $bank['id'] > 0) {
-        $nextId = max($nextId, (int) $bank['id'] + 1);
-    }
 }
 
 $clean = [];
@@ -49,20 +41,22 @@ foreach ($banks as $bank) {
         respond(['error' => "La URL del banco \"$name\" debe ser una dirección https:// válida."], 422);
     }
 
-    $id = isset($bank['id']) && (int) $bank['id'] > 0 ? (int) $bank['id'] : $nextId++;
-
-    $clean[] = [
-        'id' => $id,
-        'name' => $name,
-        'url' => $url,
-        'active' => !empty($bank['active']),
-    ];
+    $clean[] = ['name' => $name, 'url' => $url, 'active' => !empty($bank['active']) ? 1 : 0];
 }
 
-$lock = acquireStoreLock();
-$data = loadStore();
-$data['banks'] = $clean;
-saveStore($data);
-releaseStoreLock($lock);
+$pdo->beginTransaction();
+try {
+    $del = $pdo->prepare('DELETE FROM banks WHERE user_id = ?');
+    $del->execute([$userId]);
 
-respond(['ok' => true, 'banks' => $clean]);
+    $ins = $pdo->prepare('INSERT INTO banks (user_id, name, url, active) VALUES (?, ?, ?, ?)');
+    foreach ($clean as $b) {
+        $ins->execute([$userId, $b['name'], $b['url'], $b['active']]);
+    }
+    $pdo->commit();
+} catch (Throwable $e) {
+    $pdo->rollBack();
+    respond(['error' => 'No se pudieron guardar los bancos.'], 500);
+}
+
+respond(['ok' => true]);

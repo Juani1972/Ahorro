@@ -3,19 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Arca — administración</title>
+<title>Arca — mi cuenta</title>
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
 <div id="app" class="app">
 
   <!-- Login -->
-  <div v-if="!isAdmin" class="admin-login">
-    <h1>Panel de administración</h1>
+  <div v-if="!isAdmin && !pending2fa" class="admin-login">
+    <h1>Mi cuenta</h1>
     <form @submit.prevent="login">
-      <input type="password" v-model="password" placeholder="Contraseña" required autofocus>
+      <input type="text" v-model="username" placeholder="Usuario" aria-label="Usuario" required autofocus autocomplete="username">
+      <input type="password" v-model="password" placeholder="Contraseña" aria-label="Contraseña" required autocomplete="current-password">
       <button class="btn-primary" type="submit" :disabled="loggingIn">
         {{ loggingIn ? 'Verificando…' : 'Entrar' }}
+      </button>
+    </form>
+    <p class="auth-toggle"><a href="index.html">¿No tienes cuenta? Regístrate desde la web principal</a></p>
+  </div>
+
+  <!-- Segundo factor (2FA) -->
+  <div v-else-if="pending2fa" class="admin-login">
+    <h1>Verificación en dos pasos</h1>
+    <p style="color:var(--text-dim); font-size:13.5px; margin-top:4px;">Introduce el código de tu app autenticadora.</p>
+    <form @submit.prevent="verify2fa">
+      <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" v-model="twofaCode" placeholder="000000" aria-label="Código de verificación de 6 dígitos" required autofocus>
+      <button class="btn-primary" type="submit" :disabled="loggingIn">
+        {{ loggingIn ? 'Verificando…' : 'Verificar' }}
       </button>
     </form>
   </div>
@@ -27,8 +41,8 @@
       Por seguridad, cambia la contraseña por defecto antes de continuar.
     </p>
     <form @submit.prevent="changePassword">
-      <input type="password" v-model="pwForm.current" placeholder="Contraseña actual (admin1234)" required>
-      <input type="password" v-model="pwForm.next" placeholder="Nueva contraseña (mín. 8 caracteres)" required>
+      <input type="password" v-model="pwForm.current" placeholder="Contraseña actual (admin1234)" aria-label="Contraseña actual" required>
+      <input type="password" v-model="pwForm.next" placeholder="Nueva contraseña (mín. 8 caracteres)" aria-label="Nueva contraseña" required>
       <button class="btn-primary" type="submit">Guardar y continuar</button>
     </form>
   </div>
@@ -36,7 +50,7 @@
   <!-- Panel -->
   <div v-else>
     <div class="admin-bar">
-      <h1>Administración</h1>
+      <h1>Mi cuenta ({{ username }})</h1>
       <div style="display:flex; gap:10px;">
         <a href="index.html" class="btn-secondary" style="text-decoration:none; padding:9px 14px; font-size:13px; border-radius:3px; border:1px solid var(--line); color:var(--text);">Ver web</a>
         <button class="btn-ghost" @click="logout">Cerrar sesión</button>
@@ -51,8 +65,8 @@
       </div>
 
       <div class="field-row" v-for="(bank, i) in banks" :key="bank._key">
-        <input type="text" v-model="bank.name" placeholder="Nombre del banco">
-        <input type="url" v-model="bank.url" placeholder="https://…">
+        <input type="text" v-model="bank.name" placeholder="Nombre del banco" aria-label="Nombre del banco">
+        <input type="url" v-model="bank.url" placeholder="https://…" aria-label="URL del banco">
         <label class="checkbox-label">
           <input type="checkbox" v-model="bank.active"> Activo
         </label>
@@ -80,8 +94,8 @@
       </div>
 
       <div class="field-row dist-row" v-for="(item, i) in dist.items" :key="item._key">
-        <input type="text" v-model="item.concept" placeholder="Concepto (ej. Servicios)">
-        <input type="number" step="0.01" v-model="item.value" :placeholder="dist.mode === 'percentage' ? '%' : 'Monto'">
+        <input type="text" v-model="item.concept" placeholder="Concepto (ej. Servicios)" aria-label="Concepto de distribución">
+        <input type="number" step="0.01" v-model="item.value" :placeholder="dist.mode === 'percentage' ? '%' : 'Monto'" aria-label="Valor de distribución">
         <button class="btn-ghost" @click="dist.items.splice(i, 1)">Eliminar</button>
       </div>
       <button class="add-row-btn" @click="addDistItem">+ Añadir concepto</button>
@@ -97,23 +111,151 @@
       </div>
     </section>
 
+    <!-- Categorías -->
+    <section class="ledger-section">
+      <div class="section-head">
+        <h2>Categorías de movimientos</h2>
+        <span class="hint">Se ofrecen al registrar un ahorro o gasto</span>
+      </div>
+
+      <div class="field-row cat-row" v-for="(cat, i) in categories" :key="cat._key">
+        <input type="text" v-model="cat.name" placeholder="Nombre de la categoría" aria-label="Nombre de la categoría" maxlength="60">
+        <button class="btn-ghost" @click="categories.splice(i, 1)">Eliminar</button>
+      </div>
+      <button class="add-row-btn" @click="addCategory">+ Añadir categoría</button>
+
+      <div class="save-bar">
+        <button class="btn-primary" @click="saveCategories" :disabled="savingCategories">
+          {{ savingCategories ? 'Guardando…' : 'Guardar categorías' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- Objetivos de ahorro -->
+    <section class="ledger-section">
+      <div class="section-head">
+        <h2>Objetivos de ahorro</h2>
+        <span class="hint">Nombre y meta; el ahorrado se añade desde la web principal</span>
+      </div>
+
+      <div class="field-row dist-row" v-for="(goal, i) in goals" :key="goal._key">
+        <input type="text" v-model="goal.name" placeholder="Ej. Vacaciones" aria-label="Nombre del objetivo" maxlength="100">
+        <input type="number" step="0.01" min="0.01" v-model="goal.target_amount" placeholder="Meta" aria-label="Meta del objetivo">
+        <button class="btn-ghost" @click="goals.splice(i, 1)">Eliminar</button>
+      </div>
+      <button class="add-row-btn" @click="addGoal">+ Añadir objetivo</button>
+
+      <div class="save-bar">
+        <button class="btn-primary" @click="saveGoals" :disabled="savingGoals">
+          {{ savingGoals ? 'Guardando…' : 'Guardar objetivos' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- Presupuestos mensuales -->
+    <section class="ledger-section">
+      <div class="section-head">
+        <h2>Presupuestos mensuales</h2>
+        <span class="hint">Límite de gasto por categoría, cada mes</span>
+      </div>
+
+      <div v-if="!categories.length" class="empty-note">Primero crea alguna categoría más arriba.</div>
+      <div class="field-row dist-row" v-for="(b, i) in budgets" :key="b._key">
+        <select v-model.number="b.category_id" aria-label="Categoría del presupuesto">
+          <option value="" disabled>Categoría</option>
+          <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+        <input type="number" step="0.01" min="0.01" v-model="b.limit_amount" placeholder="Límite mensual" aria-label="Límite mensual del presupuesto">
+        <button class="btn-ghost" @click="budgets.splice(i, 1)">Eliminar</button>
+      </div>
+      <button class="add-row-btn" @click="addBudget" :disabled="!categories.length">+ Añadir presupuesto</button>
+
+      <div class="save-bar">
+        <button class="btn-primary" @click="saveBudgets" :disabled="savingBudgets">
+          {{ savingBudgets ? 'Guardando…' : 'Guardar presupuestos' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- Copia de seguridad -->
+    <section class="ledger-section">
+      <div class="section-head"><h2>Copia de seguridad</h2></div>
+
+      <p class="empty-note">Descarga todos tus datos (bancos, movimientos, categorías, objetivos, presupuestos y distribución) en un archivo. Puedes usarlo para restaurar tu cuenta más adelante.</p>
+
+      <div class="save-bar" style="justify-content:flex-start; margin-top:14px;">
+        <a class="btn-secondary" style="text-decoration:none; display:inline-block;" href="api/endpoints/export_backup.php">Descargar copia de seguridad</a>
+      </div>
+
+      <div style="margin-top:22px; padding-top:18px; border-top:1px dashed var(--line);">
+        <p class="empty-note" style="color:var(--danger);">
+          ⚠ Restaurar una copia reemplaza TODOS tus datos actuales por los del archivo. No se puede deshacer.
+        </p>
+        <div class="save-bar" style="justify-content:flex-start; margin-top:10px; gap:10px;">
+          <input type="file" ref="backupFile" accept="application/json" @change="onBackupFileChosen" aria-label="Archivo de copia de seguridad a restaurar">
+          <button class="btn-secondary" @click="restoreBackup" :disabled="!pendingBackupFile || restoringBackup">
+            {{ restoringBackup ? 'Restaurando…' : 'Restaurar esta copia' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Verificación en dos pasos (2FA) -->
+    <section class="ledger-section">
+      <div class="section-head">
+        <h2>Verificación en dos pasos</h2>
+        <span class="hint">{{ totpEnabled ? 'Activada' : 'Desactivada' }}</span>
+      </div>
+
+      <!-- Ya activada: solo ofrece desactivar -->
+      <div v-if="totpEnabled">
+        <p class="empty-note">Tu cuenta pide un código de tu app autenticadora cada vez que inicias sesión.</p>
+        <form @submit.prevent="disable2fa" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+          <input type="password" v-model="disable2faPassword" placeholder="Confirma tu contraseña" aria-label="Confirma tu contraseña" required>
+          <button class="btn-secondary" type="submit">Desactivar verificación en dos pasos</button>
+        </form>
+      </div>
+
+      <!-- No activada, ni en proceso de configurar -->
+      <div v-else-if="!twofaSetupData">
+        <p class="empty-note">Añade una capa extra de seguridad: tras la contraseña, se pedirá un código de una app como Google Authenticator o Authy.</p>
+        <button class="btn-secondary" style="margin-top:12px;" @click="startTwofaSetup">Configurar verificación en dos pasos</button>
+      </div>
+
+      <!-- Configurando: mostrar clave manual + pedir el primer código -->
+      <div v-else>
+        <p class="empty-note">
+          Abre tu app autenticadora, añade una cuenta nueva y elige "introducir clave manualmente".
+          Usa este nombre de cuenta: <strong>Arca:{{ username }}</strong>, y esta clave:
+        </p>
+        <p style="font-family: 'Fraunces', serif; font-size: 18px; letter-spacing: 1px; margin: 10px 0; word-break: break-all; color: var(--accent);">
+          {{ twofaSetupData.secret }}
+        </p>
+        <form @submit.prevent="confirmTwofaSetup" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" v-model="twofaConfirmCode" placeholder="Código de 6 dígitos" aria-label="Código de verificación de 6 dígitos" required>
+          <button class="btn-primary" type="submit">Confirmar y activar</button>
+          <button class="btn-ghost" type="button" @click="twofaSetupData = null">Cancelar</button>
+        </form>
+      </div>
+    </section>
+
     <!-- Contraseña -->
     <section class="ledger-section">
       <div class="section-head"><h2>Seguridad</h2></div>
       <form @submit.prevent="changePassword" style="display:flex; gap:10px; flex-wrap:wrap;">
-        <input type="password" v-model="pwForm.current" placeholder="Contraseña actual" required>
-        <input type="password" v-model="pwForm.next" placeholder="Nueva contraseña (mín. 8 caracteres)" required>
+        <input type="password" v-model="pwForm.current" placeholder="Contraseña actual" aria-label="Contraseña actual" required>
+        <input type="password" v-model="pwForm.next" placeholder="Nueva contraseña (mín. 8 caracteres)" aria-label="Nueva contraseña" required>
         <button class="btn-secondary" type="submit">Cambiar contraseña</button>
       </form>
     </section>
 
   </div>
 
-  <div v-if="toast.message" class="toast" :class="toast.type">{{ toast.message }}</div>
+  <div v-if="toast.message" class="toast" :class="toast.type" role="status" aria-live="polite">{{ toast.message }}</div>
 
 </div>
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="assets/js/vendor/vue.global.prod.js"></script>
 <script src="assets/js/admin.js"></script>
 </body>
 </html>

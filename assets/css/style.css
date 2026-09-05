@@ -16,6 +16,37 @@
   --radius: 3px;
 }
 
+:root[data-theme="light"] {
+  --bg: #f6f3ec;
+  --surface: #ffffff;
+  --surface-alt: #efe9dc;
+  --line: rgba(30, 30, 20, 0.12);
+  --line-soft: rgba(30, 30, 20, 0.06);
+  --accent: #a97e1f;
+  --accent-soft: rgba(169, 126, 31, 0.12);
+  --teal: #2f7a7a;
+  --text: #21201b;
+  --text-dim: #6b6a60;
+  --success: #3f7d54;
+  --danger: #a63d2e;
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+}
+.theme-toggle:hover { color: var(--accent); border-color: var(--teal); }
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -136,6 +167,11 @@ select:focus, input:focus {
   border-color: transparent;
 }
 
+button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
 select { flex: 1; min-width: 200px; }
 
 button {
@@ -190,6 +226,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .balance-form input[type="number"] { width: 130px; }
 .balance-form input[type="text"] { flex: 1; min-width: 160px; }
+.balance-form input[type="date"] { width: 150px; }
+.balance-form select { width: 160px; flex: initial; }
 
 .ledger-table { width: 100%; border-collapse: collapse; }
 
@@ -217,7 +255,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .amount-positive { color: var(--success); }
 .amount-negative { color: var(--danger); }
 
-.row-actions { display: flex; justify-content: flex-end; }
+.row-actions { display: flex; justify-content: flex-end; gap: 4px; }
+
+.row-editing { background: var(--accent-soft); }
+
+.category-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
 
 /* ---------- Distribución ---------- */
 
@@ -322,6 +373,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   margin-bottom: 10px;
 }
 .field-row.dist-row { grid-template-columns: 1.4fr 0.8fr auto; }
+.field-row.cat-row { grid-template-columns: 1fr auto; }
 
 @media (max-width: 560px) {
   .field-row, .field-row.dist-row { grid-template-columns: 1fr; }
@@ -372,4 +424,95 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   justify-content: flex-end;
   gap: 10px;
   margin-top: 16px;
+}
+
+/* ---------- Estadísticas mensuales ---------- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---------- Gráfico ---------- */
+
+canvas { max-width: 100%; }
+
+/* ---------- Objetivos de ahorro ---------- */
+
+.goal-list { display: flex; flex-direction: column; gap: 18px; }
+
+.goal-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.goal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 14.5px;
+}
+.goal-name { font-weight: 600; }
+.goal-amounts { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
+
+.goal-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.goal-contribute { display: flex; gap: 6px; }
+.goal-contribute input { width: 90px; padding: 8px 10px; }
+
+/* ---------- Presupuestos ---------- */
+
+.budget-list { display: flex; flex-direction: column; gap: 16px; }
+.budget-item .row { font-size: 14.5px; margin-bottom: 6px; display: flex; justify-content: space-between; }
+.bar-fill.bar-over { background: var(--danger); }
+.budget-warning {
+  color: var(--danger);
+  font-size: 12.5px;
+  margin: 6px 0 0;
+}
+
+/* ---------- Login / registro ---------- */
+
+.auth-toggle {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.auth-toggle a:hover { text-decoration: underline; }
+
+.auth-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
 }
